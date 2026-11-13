@@ -534,9 +534,22 @@
     return record.images.map(image => typeof image === 'string' ? image : image?.id).filter(Boolean).map(String);
   }
 
+  function imageMetaFrom(record) {
+    const byId = new Map();
+    if (Array.isArray(record?.images)) record.images.forEach(image => {
+      const item = typeof image === 'string' ? { id: image } : image;
+      if (item?.id) byId.set(String(item.id), { id: String(item.id), ...(item.url ? { url: item.url } : {}) });
+    });
+    imageIdsFrom(record).forEach(id => { if (!byId.has(id)) byId.set(id, { id }); });
+    return [...byId.values()];
+  }
+
+  const imageSource = image => image?.dataUrl || image?.url || '';
+
   function persistableRecord(record) {
     const { images, ...rest } = record;
-    return { ...rest, imageIds: (images || []).map(image => String(image.id)) };
+    const metadata = (images || []).map(image => ({ id: String(image.id), ...(image.url ? { url: image.url } : {}) }));
+    return { ...rest, images: metadata, imageIds: metadata.map(image => image.id) };
   }
 
   function storeDraft() {
@@ -559,8 +572,21 @@
   }
 
   async function hydrateRecord(record) {
-    const ids = imageIdsFrom(record);
-    const images = (await Promise.all(ids.map(async id => ({ id, dataUrl: await getStoredImage(id) })))).filter(image => image.dataUrl);
+    const metadata = imageMetaFrom(record);
+    const images = await Promise.all(metadata.map(async image => {
+      let dataUrl = await getStoredImage(image.id);
+      if (!dataUrl && image.url) {
+        try {
+          const response = await fetch(image.url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          dataUrl = await blobToDataUrl(await response.blob());
+          await putStoredImage(image.id, dataUrl);
+        } catch (error) {
+          dataUrl = image.url;
+        }
+      }
+      return { ...image, ...(dataUrl ? { dataUrl } : {}) };
+    }));
     return normalizeCur(record, images);
   }
 
@@ -569,7 +595,8 @@
     const legacyImages = Array.isArray(record.images) ? record.images.filter(image => image && typeof image === 'object' && image.id && image.dataUrl) : [];
     for (const image of legacyImages) await putStoredImage(String(image.id), image.dataUrl);
     const { images, ...rest } = record;
-    return { ...rest, imageIds: imageIdsFrom(record) };
+    const metadata = imageMetaFrom(record);
+    return { ...rest, images: metadata, imageIds: metadata.map(image => image.id) };
   }
 
   async function migrateLegacyImages() {
@@ -712,7 +739,7 @@
   async function menuBackgroundData(config = menuConfig) {
     if (config.background !== 'image' || !config.backgroundImageId) return null;
     const current = cur.images.find(image => String(image.id) === String(config.backgroundImageId));
-    return current?.dataUrl || await getStoredImage(String(config.backgroundImageId)) || null;
+    return imageSource(current) || await getStoredImage(String(config.backgroundImageId)) || null;
   }
 
   async function drawMenuCanvas(canvas, config, width, height) {
@@ -915,7 +942,7 @@
     $('phone').querySelectorAll('[data-compose-platform]').forEach(canvas => {
       const platform = canvas.dataset.composePlatform;
       const [width, height] = PIC_SIZE[platform] || PIC_SIZE.FB;
-      composeImage(canvas, pic.dataUrl, width, height).catch(() => {});
+      composeImage(canvas, imageSource(pic), width, height).catch(() => {});
     });
   }
 
@@ -935,14 +962,14 @@
     if (!main) return '';
     const ordered = [main, ...cur.images.filter(pic => pic.id !== main.id)];
     const [w, h] = PIC_SIZE.IG;
-    const slides = ordered.map((pic, i) => `<div class="ig-slide" style="aspect-ratio:${w}/${h}">${i === 0 ? composedCanvas('IG') : `<img src="${pic.dataUrl}" alt="這篇的第 ${i + 1} 張圖">`}</div>`).join('');
+    const slides = ordered.map((pic, i) => `<div class="ig-slide" style="aspect-ratio:${w}/${h}">${i === 0 ? composedCanvas('IG') : `<img src="${esc(imageSource(pic))}" alt="這篇的第 ${i + 1} 張圖">`}</div>`).join('');
     const dots = ordered.map((pic, i) => `<span class="ig-dot${i === 0 ? ' on' : ''}"></span>`).join('');
     return `<div class="ig-carousel" aria-label="這篇的圖片，可左右滑動">${slides}</div><div class="ig-dots" aria-hidden="true">${dots}</div>`;
   };
 
   function renderPics() {
     $('picList').innerHTML = cur.images.map(pic => `<div class="pic-thumb${pic.id === cur.primaryImageId ? ' main' : ''}" data-pic="${esc(String(pic.id))}" role="button" tabindex="0" title="設為主圖">
-      <img src="${pic.dataUrl}" alt="上傳的圖片">
+      <img src="${esc(imageSource(pic))}" alt="上傳的圖片">
       <button type="button" class="pic-del" data-del-pic="${esc(String(pic.id))}" aria-label="刪除圖片">×</button>
     </div>`).join('');
     renderStorageUsage();
@@ -961,6 +988,15 @@
         resolve(canvas.toDataURL('image/jpeg', 0.85));
       };
       img.src = dataUrl;
+    });
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error || new Error('圖片讀取失敗'));
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
     });
   }
 
@@ -1050,7 +1086,7 @@
     button.textContent = '⬇ 製作中…';
     try {
       const canvas = document.createElement('canvas');
-      await composeImage(canvas, pic.dataUrl, width, height);
+      await composeImage(canvas, imageSource(pic), width, height);
       const link = document.createElement('a');
       const safeBrand = BRAND.name.replace(/[\\/:*?"<>|]/g, '_');
       const safeName = sizeName.replace(/[\\/:*?"<>|]/g, '_');
@@ -1920,13 +1956,62 @@ ${posts}`;
   function cloudSaveErrorZh(error) {
     const code = String(error?.code || '').toUpperCase();
     const message = String(error?.message || error || '未知錯誤');
+    const lower = message.toLowerCase();
+    if (lower.includes('bucket not found')) {
+      return '雲端還沒有 images 桶子，到 SQL Editor 貼圖片那段按 Run';
+    }
     if (code === '42P01' || code === 'PGRST205') {
       return '雲端還沒有 posts 表，到 SQL Editor 貼建表那段按 Run';
     }
-    if (code === '42501' || message.toLowerCase().includes('row-level security')) {
-      return '雲端不讓你存，SQL 的權限那段沒跑到';
+    if (code === '42501' || lower.includes('row-level security')) {
+      return error?.imageUpload || lower.includes('storage') || lower.includes('object')
+        ? '雲端不讓你傳圖，SQL 的圖片權限那段沒跑到'
+        : '雲端不讓你存，SQL 的權限那段沒跑到';
     }
     return message;
+  }
+
+  function imageExtension(type) {
+    return ({
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+      'image/svg+xml': 'svg'
+    })[String(type || '').toLowerCase()] || 'jpg';
+  }
+
+  async function uploadRecordImages(record, liveImages = []) {
+    const metadata = imageMetaFrom(record);
+    const originalById = new Map((record.images || []).filter(image => image && typeof image === 'object').map(image => [String(image.id), image]));
+    let uploadedCount = 0;
+    for (const image of metadata) {
+      if (image.url) continue;
+      const live = liveImages.find(item => String(item.id) === image.id);
+      const source = live?.dataUrl || await getStoredImage(image.id);
+      if (!source) throw new Error(`找不到圖片 ${image.id}，請在原本存圖的裝置重新打開後再上傳`);
+      const response = await fetch(source);
+      if (!response.ok) throw new Error(`圖片 ${image.id} 讀取失敗`);
+      const file = await response.blob();
+      const path = `${me.id}/${image.id}.${imageExtension(file.type)}`;
+      const { error } = await sb.storage.from('images').upload(path, file, {
+        upsert: true,
+        contentType: file.type || 'image/jpeg'
+      });
+      if (error) throw { ...error, message: error.message, imageUpload: true };
+      const { data } = sb.storage.from('images').getPublicUrl(path);
+      if (!data?.publicUrl) throw new Error(`圖片 ${image.id} 沒有取得雲端網址`);
+      image.url = data.publicUrl;
+      if (live) live.url = data.publicUrl;
+      uploadedCount++;
+    }
+    const updated = {
+      ...record,
+      images: metadata.map(image => ({ ...(originalById.get(image.id) || {}), ...image })),
+      imageIds: metadata.map(image => image.id),
+      ...(uploadedCount ? { savedAt: Date.now() } : {})
+    };
+    return { record: updated, uploadedCount };
   }
 
   function setCloudSyncStatus(message, isError = false) {
@@ -1960,12 +2045,20 @@ ${posts}`;
     const posts = load(K_POSTS, []);
     setCloudSyncStatus('正在上傳…');
     for (let index = 0; index < posts.length; index++) {
-      const post = posts[index];
+      let post = posts[index];
       try {
+        const liveImages = String(cur.id) === String(post.id) ? cur.images : [];
+        const uploaded = await uploadRecordImages(post, liveImages);
+        post = uploaded.record;
+        posts[index] = post;
+        if (uploaded.uploadedCount) {
+          if (!store(K_POSTS, posts)) throw new Error('這台電腦的儲存空間不足');
+          if (liveImages.length) { cur.savedAt = post.savedAt; storeDraft(); }
+        }
         const { error } = await sb.from('posts').upsert({
           id: String(post.id),
           user_id: me.id,
-          data: post,
+          data: persistableRecord(post),
           publish_date: post.publishDate || null,
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id,id' });
@@ -2026,30 +2119,39 @@ ${posts}`;
   $('btnSave').onclick = async () => {
     const posts = load(K_POSTS, []);
     const name = [cur.fields.date || '', topic() || '未命名'].join(' ').trim();
-    const rec = { id: cur.id || Date.now(), name, time: new Date().toLocaleString('zh-TW'), savedAt: Date.now(), publishDate: cur.publishDate || '', fields: { ...cur.fields }, posts: { ...cur.posts }, chats: { ...cur.chats }, previousPosts: cur.previousPosts ? { ...cur.previousPosts } : null, ...(imageWarehouseReady ? { imageIds: cur.images.map(pic => String(pic.id)) } : { images: cur.images.map(pic => ({ ...pic })) }), primaryImageId: cur.primaryImageId, imageText: { ...cur.imageText }, downloadSize: cur.downloadSize };
+    const rawRec = { id: cur.id || Date.now(), name, time: new Date().toLocaleString('zh-TW'), savedAt: Date.now(), publishDate: cur.publishDate || '', fields: { ...cur.fields }, posts: { ...cur.posts }, chats: { ...cur.chats }, previousPosts: cur.previousPosts ? { ...cur.previousPosts } : null, images: cur.images.map(pic => ({ ...pic })), primaryImageId: cur.primaryImageId, imageText: { ...cur.imageText }, downloadSize: cur.downloadSize };
+    let rec = imageWarehouseReady ? persistableRecord(rawRec) : rawRec;
     cur.id = rec.id;
+    cur.savedAt = rec.savedAt;
     const i = posts.findIndex(p => p.id === rec.id);
     if (i >= 0) posts[i] = rec; else posts.unshift(rec);
     if (!(store(K_POSTS, posts) && storeDraft())) return;
     toast('存好了：' + name);
 
     if (!sb || !me) {
-      setCloudSaveStatus('只存在這台電腦。🔐 登入以後，會同時存到雲端');
+      setCloudSaveStatus('只存在這台電腦。🔐 登入以後，會同時存到雲端（傳了 0 張圖）');
       return;
     }
 
-    setCloudSaveStatus('☁ 正在存到雲端…');
+    setCloudSaveStatus('☁ 正在傳圖片並存到雲端…');
     try {
+      const uploaded = await uploadRecordImages(rec, cur.images);
+      rec = uploaded.record;
+      cur.savedAt = rec.savedAt;
+      const localPosts = load(K_POSTS, []);
+      const localIndex = localPosts.findIndex(post => String(post.id) === String(rec.id));
+      if (localIndex >= 0) localPosts[localIndex] = rec; else localPosts.unshift(rec);
+      if (!(store(K_POSTS, localPosts) && storeDraft())) throw new Error('這台電腦的儲存空間不足');
       const { error } = await sb.from('posts').upsert({
         id: String(rec.id),
         user_id: me.id,
-        data: rec,
+        data: persistableRecord(rec),
         publish_date: rec.publishDate || null,
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id,id' });
       if (error) throw error;
       cloudPostIds.add(String(rec.id));
-      setCloudSaveStatus(`☁ 雲端也存了：${name}`);
+      setCloudSaveStatus(`☁ 雲端也存了：${name}（傳了 ${uploaded.uploadedCount} 張圖）`);
       if ($('mList').classList.contains('show')) showList();
     } catch (error) {
       setCloudSaveStatus(`${cloudSaveErrorZh(error)}\n這台電腦有存到，不會不見`, true);
@@ -2075,7 +2177,7 @@ ${posts}`;
       try {
         cur = imageWarehouseReady
           ? await hydrateRecord({ ...p, tab: PLATFORMS[0] })
-          : normalizeCur({ ...p, tab: PLATFORMS[0] }, Array.isArray(p.images) ? p.images.filter(image => image?.dataUrl) : []);
+          : normalizeCur({ ...p, tab: PLATFORMS[0] }, Array.isArray(p.images) ? p.images.filter(image => image?.dataUrl || image?.url).map(image => ({ ...image, dataUrl: image.dataUrl || image.url })) : []);
         fill(); $('mList').classList.remove('show'); toast('打開：' + p.name);
       } catch (error) {
         warehouseError = '圖片倉庫暫時無法讀取'; renderStorageUsage(); toast('這篇的圖片打不開');
@@ -2114,7 +2216,7 @@ ${posts}`;
       imageWarehouseReady = false;
       warehouseError = '圖片倉庫打不開，舊圖片沒有搬動';
       const legacy = load(K_DRAFT, blank());
-      const legacyImages = Array.isArray(legacy.images) ? legacy.images.filter(image => image?.dataUrl) : [];
+      const legacyImages = Array.isArray(legacy.images) ? legacy.images.filter(image => image?.dataUrl || image?.url).map(image => ({ ...image, dataUrl: image.dataUrl || image.url })) : [];
       cur = normalizeCur(legacy, legacyImages);
       fill(false);
       renderStorageUsage();
