@@ -110,6 +110,9 @@
   .bubble { background: #fff; border-radius: 16px; padding: 10px 12px; white-space: pre-wrap; line-height: 1.6; max-width: 230px; word-break: break-word; }
   .line-stack { display: grid; gap: 8px; max-width: 230px; }
   .line-pic { border-radius: 16px; background: #fff; overflow: hidden; }
+  .line-rich-menu { margin: 14px -12px -12px; background: #fff; }
+  .line-menu-label { padding: 8px 12px; text-align: center; font-size: 12px; color: #555; border-top: 1px solid #ddd; }
+  .line-rich-menu canvas { width: 100%; height: auto; display: block; }
   .th { display: flex; gap: 10px; padding: 14px 12px; }
   .th .p-text { padding: 4px 0 8px; }
 
@@ -118,6 +121,21 @@
   .modal.show { display: flex; }
   .modal .box { width: min(760px, 100%); max-height: 90vh; overflow: auto; }
   .modal textarea { min-height: 160px; }
+  #mMenu .box { width: min(920px, 100%); }
+  .menu-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .menu-cell-list { display: grid; gap: 8px; margin-top: 12px; }
+  .menu-cell { display: grid; grid-template-columns: 44px 70px minmax(120px, 1fr) 130px minmax(160px, 1.3fr); gap: 8px; align-items: end; padding: 10px; border: 1px solid var(--line); border-radius: calc(var(--radius) / 2); }
+  .menu-cell-code { align-self: center; text-align: center; font-size: 20px; font-weight: bold; color: var(--main); }
+  .menu-cell label { margin: 0; }
+  .menu-preview-wrap { margin-top: 14px; padding: 10px; background: var(--bg); border-radius: var(--radius); }
+  #menuPreview { width: 100%; max-height: 360px; display: block; object-fit: contain; }
+  .menu-status { margin-top: 8px; white-space: pre-wrap; }
+  .menu-status.error { color: #b42318; font-weight: bold; }
+  @media (max-width: 700px) {
+    .menu-controls { grid-template-columns: 1fr; }
+    .menu-cell { grid-template-columns: 38px 58px 1fr; }
+    .menu-cell .menu-action, .menu-cell .menu-content { grid-column: 2 / -1; }
+  }
   .item { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 8px 0; }
   .item div { flex: 1; }
   #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 14px; display: none; z-index: 20; }
@@ -129,7 +147,9 @@
   <h1 id="brandTitle">我的品牌｜社群工作台</h1>
   <button id="btnNew">＋ 新的一篇</button>
   <button id="btnList">📁 我的貼文</button>
+  <button id="btnMenu">📋 圖文選單</button>
   <button id="btnSet">⚙ 設定</button>
+  <button id="btnAuth">🔐 登入</button>
 </header>
 
 <main>
@@ -137,6 +157,8 @@
   <section class="box">
     <h2>素材卡</h2>
     <div id="fields"></div>
+    <label for="publishDate">📅 預計發佈日</label>
+    <input type="date" id="publishDate">
     <div class="pics">
       <div class="pics-head"><h2>🖼 這篇的圖</h2><button type="button" id="btnUpload">📤 上傳</button></div>
       <input type="file" id="picInput" accept="image/*" multiple hidden>
@@ -166,6 +188,7 @@
       <button class="light" id="btnPaste">📥 貼回 AI 寫好的</button>
       <button class="light" id="btnSave">💾 存檔</button>
     </div>
+    <div id="cloudSaveStatus" class="small" style="white-space:pre-wrap; margin-top:8px"></div>
     <div id="aiStatus" class="small" style="white-space:pre-wrap; margin-top:8px"></div>
   </section>
 
@@ -283,6 +306,11 @@
 <!-- 我的貼文 -->
 <div class="modal" id="mList"><div class="box">
   <h2>📁 我的貼文</h2>
+  <div class="actions">
+    <button id="btnUploadAll">⬆ 全部上傳到雲端</button>
+    <button class="light" id="btnDownloadAll">⬇ 從雲端拿回來</button>
+  </div>
+  <div id="cloudSyncStatus" class="small" style="margin:10px 0;white-space:pre-wrap"></div>
   <div id="list"></div>
   <div class="actions"><button class="light" data-close>關閉</button></div>
 </div></div>
@@ -295,10 +323,39 @@
   <div class="actions"><button class="light" data-close>關閉</button></div>
 </div></div>
 
+<!-- LINE 圖文選單 -->
+<div class="modal" id="mMenu"><div class="box">
+  <h2>📋 LINE 圖文選單</h2>
+  <div class="menu-controls">
+    <div><label for="menuTemplate">版型</label><select id="menuTemplate"></select></div>
+    <div><label for="menuBackground">底色</label><select id="menuBackground"><option value="main">品牌主色</option><option value="white">白色</option><option value="image">這篇的主圖加深一點</option></select></div>
+    <div><label for="menuBarText">選單列的字</label><input type="text" id="menuBarText" maxlength="14" value="選單"></div>
+  </div>
+  <div class="menu-cell-list" id="menuCells"></div>
+  <div class="menu-preview-wrap"><canvas id="menuPreview"></canvas></div>
+  <div class="small menu-status" id="menuStatus"></div>
+  <div class="actions"><button id="btnDownloadMenu">⬇ 下載選單圖</button><button class="light" id="btnCopyMenu">📋 複製設定表</button><button class="light" data-close>關閉</button></div>
+</div></div>
+
+<!-- Supabase 登入 -->
+<div class="modal" id="mAuth"><div class="box">
+  <h2>🔐 登入</h2>
+  <label for="authEmail">Email</label>
+  <input type="email" id="authEmail" autocomplete="email" placeholder="name@example.com">
+  <label for="authPassword">密碼（至少 6 個字）</label>
+  <input type="password" id="authPassword" minlength="6" autocomplete="current-password">
+  <div class="actions"><button id="btnSignIn">登入</button><button id="btnSignUp">第一次：註冊</button><button class="light" id="btnSignOut">登出</button><button class="light" data-close>關閉</button></div>
+  <div id="authStatus" class="small" style="margin-top:10px;white-space:pre-wrap"></div>
+</div></div>
+
 <div id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
   // ===== 我的品牌、平台、欄位都在這裡改 =====
+  // 這兩個可以公開，守門的是 Supabase 的 RLS；祕密金鑰絕對不要貼
+  const SB_URL = 'https://uwwenwujlvavcsmwcnox.supabase.co';
+  const SB_KEY = 'sb_publishable_JEP7b-qgUlif8r6esEwIwA_Mprr8fsQ';
   const DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-v4.1-flash';
   const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
   const DEFAULT_IMAGE_MODEL = 'bytedance-seed/seedream-5-0-flash';
@@ -323,6 +380,15 @@
     lineAvatar: { label: 'LINE 大頭貼', width: 640, height: 640 },
     lineBroadcast: { label: 'LINE 群發圖', width: 1040, height: 1040 }
   };
+  const MENUS = [
+    { id: 'large-6', name: '大型 6 格（上 3 下 3）', w: 2500, h: 1686, cols: 3, rows: 2 },
+    { id: 'large-4', name: '大型 4 格（上 2 下 2）', w: 2500, h: 1686, cols: 2, rows: 2 },
+    { id: 'large-1', name: '大型 1 格', w: 2500, h: 1686, cols: 1, rows: 1 },
+    { id: 'small-3', name: '小型 3 格（左中右）', w: 2500, h: 843, cols: 3, rows: 1 },
+    { id: 'small-2', name: '小型 2 格（左右）', w: 2500, h: 843, cols: 2, rows: 1 },
+    { id: 'small-1', name: '小型 1 格', w: 2500, h: 843, cols: 1, rows: 1 }
+  ];
+  const MENU_JPEG_QUALITIES = [0.92, 0.85, 0.78, 0.7, 0.6, 0.5];
   const FIELDS = [
     { id: 'date',   label: '活動日期',             type: 'date' },
     { id: 'topic',  label: '活動名稱',             type: 'text',     ph: '例：開店七週年' },
@@ -336,7 +402,7 @@
 
   // ===== 下面是程式，不用改 =====
   const $ = id => document.getElementById(id);
-  const K_DRAFT = 'demo-draft', K_POSTS = 'demo-posts', K_SET = 'demo-settings', K_USAGE = 'demo-ai-usage';
+  const K_DRAFT = 'demo-draft', K_POSTS = 'demo-posts', K_SET = 'demo-settings', K_USAGE = 'demo-ai-usage', K_MENU = 'demo-rich-menu';
   const IMAGE_DB = 'studio-images', IMAGE_STORE = 'imgs';
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
   let storageFull = false;
@@ -375,6 +441,7 @@
   const getStoredImage = id => imageStoreRequest('readonly', store => store.get(id));
   const deleteStoredImage = id => imageStoreRequest('readwrite', store => store.delete(id));
   const countStoredImages = () => imageStoreRequest('readonly', store => store.count());
+  const clearStoredImages = () => imageStoreRequest('readwrite', store => store.clear());
 
   const store = (k, v) => {
     try { localStorage.setItem(k, JSON.stringify(v)); storageFull = false; renderStorageUsage(); return true; }
@@ -383,13 +450,82 @@
   const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const toast = msg => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 1600); };
 
+  let me = null;
+  let sb = null;
+  let sbUnavailableReason = '';
+  let localReady = false;
+  const autoSyncedUserIds = new Set();
+  const cloudPostIds = new Set();
+
+  if (!SB_URL || !SB_KEY) {
+    sbUnavailableReason = '還沒填 SB_URL 或 SB_KEY';
+  } else if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+    sbUnavailableReason = 'Supabase 程式庫載入失敗';
+  } else {
+    try {
+      sb = window.supabase.createClient(SB_URL, SB_KEY);
+    } catch (error) {
+      sbUnavailableReason = error?.message || 'Supabase 連線設定無效';
+    }
+  }
+
+  function authErrorZh(error) {
+    const message = String(error?.message || error || '發生未知錯誤');
+    const lower = message.toLowerCase();
+    if (lower.includes('invalid login credentials')) return 'Email 或密碼不對';
+    if (lower.includes('user already registered')) return '這個 Email 註冊過了，直接按「登入」';
+    if (lower.includes('email not confirmed')) return '到 Supabase 把 Confirm email 關掉';
+    if (lower.includes('password') && (lower.includes('6') || lower.includes('short') || lower.includes('least'))) return '密碼至少 6 個字';
+    if (lower.includes('rate limit') || lower.includes('too many requests') || lower.includes('over_email_send_rate_limit')) return '試太多次了，等 1 分鐘';
+    return message;
+  }
+
+  function setAuthStatus(message) {
+    $('authStatus').textContent = message;
+  }
+
+  function refreshAuthUI() {
+    $('btnAuth').textContent = me?.email ? `☁ ${me.email}` : '🔐 登入';
+    $('btnSignOut').disabled = !me;
+    if ($('mList').classList.contains('show')) showList();
+  }
+
+  function authInputs() {
+    return { email: $('authEmail').value.trim(), password: $('authPassword').value };
+  }
+
+  function authReady() {
+    if (sb) return true;
+    setAuthStatus(`還沒接雲端：${sbUnavailableReason || '未知原因'}`);
+    return false;
+  }
+
+  async function initializeAuth() {
+    refreshAuthUI();
+    if (!sb) return;
+    sb.auth.onAuthStateChange((_event, session) => {
+      me = session?.user || null;
+      refreshAuthUI();
+      maybeAutoDownload();
+    });
+    try {
+      const { data, error } = await sb.auth.getSession();
+      if (error) throw error;
+      me = data.session?.user || null;
+      refreshAuthUI();
+      maybeAutoDownload();
+    } catch (error) {
+      setAuthStatus(authErrorZh(error));
+    }
+  }
+
   // 示範用：第一次打開，先把小島的品牌規格放進設定
   if (!localStorage.getItem(K_SET)) store(K_SET, { spec: "## 1. 品牌口氣（寫具體）\n\n像島哥本人跟熟客聊天。具體來說：\n\n- 句子短，一句只講一件事。\n- 用「你」，不用「您」、不用「親愛的」。\n- 驚嘆號一篇最多 1 個。\n- 講豆子：講「味道」和「故事」，不講便宜、不催人買。\n- 不寫「快來」「要買要快」「錯過可惜」這種催促的話。\n- 「慢慢來，比較快。」可以用，但一篇最多一次，不是每篇都要。\n\n## 2. 不能用的字\n\n- 網美風誇張字：爆表、必喝、神級、太狂、一定要衝、狂歡、史上最\n- 講便宜的字：CP 值、超划算、俗又大碗\n- 大賣場用語：「咖啡豆產品」→ 一律說「豆子」\n\n## 3. 不准自己加的東西\n\n老闆沒說過的，**一個字都不要加**：\n\n- 豆子的產地細節（海拔、農場、處理法、烘焙度）\n- 老闆沒說的風味和口感\n- 老闆沒說的活動規則（例如「限開賣當天」「預購也算名額」）\n- 「神秘驚喜」「限時倒數」這種製造緊張的話\n\n不確定的，先問我，不要猜。\n\n## 4. 三個平台的規則＋骨架＋範例\n\n### Facebook\n\n- 看的人：熟客、年紀比較大。\n- 4～6 段，每段 1～3 句。先講一個小故事或店裡的畫面，再講活動。\n- emoji 最多 2 個。\n- 不放 hashtag。\n\n**骨架（照這個格子填）：**\n\n```\n【小島日常】或【島哥的＿＿＿通知】\n（第 1 段：店裡的一個小畫面，1～2 句）\n（第 2 段：島哥說的話或想法，1～2 句）\n（第 3 段：活動是什麼、哪一天、多少錢）\n（第 4 段：優惠和條件，寫清楚誰可以、要做什麼）\n（可選：慢慢來，比較快。）\n\n📍 小島咖啡｜台中市西區小島巷 8 號\n週三～週日 11:00–19:00\n```\n\n**範例（照這篇的感覺寫）：**\n\n```\n【小島日常】\n這週烘了一批哥倫比亞，豆子在烘豆機裡慢慢轉，整間店都是焦糖的味道。\n\n島哥說，烘豆跟做人一樣，急不得。\n這批豆子要休息三天才會好喝，所以下週三才會上架。\n\n慢慢來，比較快。\n\n📍 小島咖啡｜台中市西區小島巷 8 號\n週三～週日 11:00–19:00\n```\n\n### Instagram\n\n- 看的人：年輕人，先看照片。\n- 整篇不超過 8 行（hashtag 不算）。一行一件事。\n- 用「.」空行分段。\n- 一定要 tag `@xiaodao.coffee`。\n- hashtag 5～8 個，放最後，一定包含：#小島咖啡 #台中咖啡 #自家烘焙\n\n**骨架：**\n\n```\n（第 1 行：一句短話＋1 個 emoji）\n\n（2～4 行：名稱、味道或重點，一行一件事）\n.\n（日期／時間）\n.\n@xiaodao.coffee\n#小島咖啡 #台中咖啡 #自家烘焙 ＋2～5 個這次活動的 hashtag\n```\n\n**範例：**\n\n```\n下週三見 ☕\n\n哥倫比亞 慧蘭 新烘好\n焦糖、堅果、一點點紅蘋果\n.\n慢慢來，比較快。\n.\n@xiaodao.coffee\n#小島咖啡 #台中咖啡 #自家烘焙 #手沖咖啡 #慢慢來\n```\n\n### LINE 官方帳號\n\n- 看的人：會員，想知道優惠。\n- 整篇在手機一個畫面內看完（大約 8 行內）。\n- 第一行就講好處。\n- ✔ 重點最多 3 點。\n- 一定要寫「怎麼做」。\n- 最後一行固定署名。\n\n**骨架：**\n\n```\n【會員限定】＋一句好處　（優惠用這個）\n【小島公告】＋一句重點　（營業時間、公告用這個）\n\n✔ 重點 1\n✔ 重點 2\n✔ 重點 3（最多 3 點）\n\n👉 （怎麼做，例如：直接回覆「＿＿」）\n\n小島咖啡 島哥\n```\n\n**範例：**\n\n```\n【會員限定】哥倫比亞新豆預購開始囉！\n\n✔ 會員預購 9 折\n✔ 下週三起到店取豆\n\n👉 直接回覆「預購＋數量」就可以\n\n小島咖啡 島哥\n```\n\n## 5. 平台限定的規則（寫具體）\n\n- 老闆說「只在 LINE 講」的，**不寫到 FB、IG**。\n- 老闆說「先不要講」「還沒確定」的，**三篇都不寫**。\n- 會員活動如果老闆說「三個平台都要」，FB、IG 也要寫，結尾加一句「還不是會員的，可以加小島的 LINE」。\n\n## 6. 寫之前一定要檢查\n\n- 價格、日期以老闆**最後一次**說的為準。\n- 日期後面寫星期幾，要對（例：10/10 是週六）。\n- 營業時間有變的（提早關、開比較晚），要寫清楚。", check: "> 卡住的同學，把這份改名成 `檢查清單.md` 放進資料夾。\n\n## 事實（拿活動卡來對）\n\n1. 價格、日期、星期幾、時間，跟活動卡一模一樣嗎？\n2. 有沒有活動卡上沒有的東西？（產地細節、風味、口感、規則、名額、驚喜）有的話刪掉。\n3. 優惠的條件寫對了嗎？（誰可以、要買什麼才有、送幾個、限量多少）\n4. 老闆改過口的地方，用的是最後的版本嗎？\n\n## 平台\n\n5. 「只能在 LINE 講」的事，有沒有跑到 FB、IG？\n6. 「先不要講」的事，三篇都沒有出現嗎？\n7. 每個平台的固定結尾都有嗎？（FB：地址＋營業時間／IG：tag＋hashtag／LINE：署名）\n\n## 口氣\n\n8. 有沒有不能用的字？（品牌規格裡的＋這次老闆新說不要的）\n9. 有沒有催人買的話？（快來、要買要快、錯過可惜）\n10. 讀起來像島哥嗎？還是像百貨公司、像網美？\n\n## 檢查完\n\n- 每篇每條都寫 ✅ 或 ❌。\n- 有 ❌ 的，先自己改好，再給我看：檢查結果＋改了哪裡。" });
 
   document.title = BRAND.name + '｜社群工作台';
   $('brandTitle').textContent = BRAND.name + '｜社群工作台';
 
-  const blank = () => ({ id: null, fields: {}, posts: {}, chats: {}, previousPosts: null, images: [], primaryImageId: null, imageText: { text: '', position: 'bottom', size: 'medium', style: 'white-main' }, downloadSize: 'platform', tab: PLATFORMS[0] });
+  const blank = () => ({ id: null, fields: {}, posts: {}, chats: {}, previousPosts: null, images: [], primaryImageId: null, imageText: { text: '', position: 'bottom', size: 'medium', style: 'white-main' }, downloadSize: 'platform', publishDate: '', tab: PLATFORMS[0] });
   let cur = blank();
 
   function imageIdsFrom(record) {
@@ -512,6 +648,172 @@
       image.src = dataUrl;
     }));
     return imageCache.get(dataUrl);
+  }
+
+  const menuTemplate = id => MENUS.find(menu => menu.id === id) || MENUS[0];
+  const blankMenuCell = () => ({ icon: '', label: '', action: 'none', content: '' });
+  const blankMenu = () => ({ templateId: MENUS[0].id, background: 'main', backgroundImageId: null, barText: '選單', cells: Array.from({ length: MENUS[0].cols * MENUS[0].rows }, blankMenuCell) });
+  function normalizeMenu(value) {
+    const source = value || blankMenu();
+    const template = menuTemplate(source.templateId);
+    const count = template.cols * template.rows;
+    return {
+      templateId: template.id,
+      background: ['main', 'white', 'image'].includes(source.background) ? source.background : 'main',
+      backgroundImageId: source.backgroundImageId ? String(source.backgroundImageId) : null,
+      barText: String(source.barText || '選單').slice(0, 14),
+      cells: Array.from({ length: count }, (_, index) => ({ ...blankMenuCell(), ...(source.cells?.[index] || {}) }))
+    };
+  }
+  let menuConfig = normalizeMenu(load(K_MENU, blankMenu()));
+
+  const firstGrapheme = value => {
+    const text = String(value || '');
+    if (!text) return '';
+    if (Intl.Segmenter) return [...new Intl.Segmenter('zh-TW', { granularity: 'grapheme' }).segment(text)][0]?.segment || '';
+    return Array.from(text)[0] || '';
+  };
+
+  function saveMenu() {
+    store(K_MENU, menuConfig);
+    renderMenuPreview();
+    if (cur.tab === 'LINE') preview();
+  }
+
+  function menuPositionName(template, index) {
+    if (template.rows === 1) {
+      if (template.cols === 1) return '全區';
+      return template.cols === 2 ? ['左', '右'][index] : ['左', '中', '右'][index];
+    }
+    const colNames = template.cols === 2 ? ['左', '右'] : ['左', '中', '右'];
+    const rowName = Math.floor(index / template.cols) === 0 ? '上' : '下';
+    return `${colNames[index % template.cols]}${rowName}`;
+  }
+
+  function menuErrors(config = menuConfig) {
+    const errors = [];
+    if (config.cells.every(cell => cell.action === 'none')) errors.push('LINE 不允許每一格都設為「不設定」');
+    config.cells.forEach((cell, index) => {
+      const code = String.fromCharCode(65 + index);
+      if (!(cell.icon || '').trim() && !(cell.label || '').trim()) errors.push(`${code} 格至少要有文字或圖示`);
+      const effective = (cell.content || '').trim() || (cell.label || '').trim();
+      if (cell.action === 'url' && !effective.startsWith('https://')) errors.push(`${code} 格的網址必須以 https:// 開頭`);
+    });
+    if (config.background === 'image' && !config.backgroundImageId) errors.push('請先替這一篇選一張主圖，再使用主圖底色');
+    return errors;
+  }
+
+  function setMenuStatus(message = '', isError = false) {
+    const el = $('menuStatus');
+    el.textContent = message;
+    el.classList.toggle('error', isError);
+  }
+
+  async function menuBackgroundData(config = menuConfig) {
+    if (config.background !== 'image' || !config.backgroundImageId) return null;
+    const current = cur.images.find(image => String(image.id) === String(config.backgroundImageId));
+    return current?.dataUrl || await getStoredImage(String(config.backgroundImageId)) || null;
+  }
+
+  async function drawMenuCanvas(canvas, config, width, height) {
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const template = menuTemplate(config.templateId);
+    const mainColor = getComputedStyle(document.documentElement).getPropertyValue('--main').trim() || '#8a5a3b';
+    ctx.fillStyle = config.background === 'white' ? '#fff' : mainColor;
+    ctx.fillRect(0, 0, width, height);
+    if (config.background === 'image') {
+      const dataUrl = await menuBackgroundData(config);
+      if (!dataUrl) throw new Error('找不到圖文選單使用的主圖');
+      const image = await loadCanvasImage(dataUrl);
+      const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+      const sourceWidth = width / scale, sourceHeight = height / scale;
+      ctx.drawImage(image, (image.naturalWidth - sourceWidth) / 2, (image.naturalHeight - sourceHeight) / 2, sourceWidth, sourceHeight, 0, 0, width, height);
+      ctx.fillStyle = 'rgba(0,0,0,.42)';
+      ctx.fillRect(0, 0, width, height);
+    }
+    const dark = config.background !== 'white';
+    const cellWidth = width / template.cols, cellHeight = height / template.rows;
+    ctx.strokeStyle = dark ? 'rgba(255,255,255,.72)' : 'rgba(138,90,59,.45)';
+    ctx.lineWidth = Math.max(1, width / 1250);
+    for (let col = 1; col < template.cols; col++) { ctx.beginPath(); ctx.moveTo(cellWidth * col, 0); ctx.lineTo(cellWidth * col, height); ctx.stroke(); }
+    for (let row = 1; row < template.rows; row++) { ctx.beginPath(); ctx.moveTo(0, cellHeight * row); ctx.lineTo(width, cellHeight * row); ctx.stroke(); }
+    const fontFamily = getComputedStyle(document.body).fontFamily;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = dark ? '#fff' : mainColor;
+    config.cells.forEach((cell, index) => {
+      const col = index % template.cols, row = Math.floor(index / template.cols);
+      const centerX = (col + .5) * cellWidth, centerY = (row + .5) * cellHeight;
+      const shortSide = Math.min(cellWidth, cellHeight);
+      const icon = (cell.icon || '').trim(), label = (cell.label || '').trim();
+      const iconSize = Math.round(shortSide * (label ? .22 : .3));
+      const textSize = Math.round(shortSide * (icon ? .105 : .13));
+      if (icon) {
+        ctx.font = `${iconSize}px "Segoe UI Emoji", ${fontFamily}`;
+        ctx.fillText(icon, centerX, label ? centerY - shortSide * .13 : centerY);
+      }
+      if (label) {
+        ctx.font = `bold ${textSize}px ${fontFamily}`;
+        const lines = wrapCanvasText(ctx, label, cellWidth * .78, 2);
+        const lineHeight = textSize * 1.25;
+        const baseY = icon ? centerY + shortSide * .18 : centerY;
+        lines.forEach((line, lineIndex) => ctx.fillText(line, centerX, baseY + (lineIndex - (lines.length - 1) / 2) * lineHeight));
+      }
+    });
+    return canvas;
+  }
+
+  function renderMenuCells() {
+    const template = menuTemplate(menuConfig.templateId);
+    $('menuCells').innerHTML = menuConfig.cells.map((cell, index) => {
+      const code = String.fromCharCode(65 + index);
+      return `<div class="menu-cell" data-menu-index="${index}">
+        <div class="menu-cell-code">${code}</div>
+        <label>圖示<input class="menu-icon" type="text" value="${esc(cell.icon || '')}" placeholder="☕"></label>
+        <label>格子上的字<input class="menu-label" type="text" maxlength="12" value="${esc(cell.label || '')}"></label>
+        <label class="menu-action">按了做什麼<select><option value="text"${cell.action === 'text' ? ' selected' : ''}>送出文字</option><option value="url"${cell.action === 'url' ? ' selected' : ''}>開網址</option><option value="none"${cell.action === 'none' ? ' selected' : ''}>不設定</option></select></label>
+        <label class="menu-content">內容<input type="text" value="${esc(cell.content || '')}" placeholder="沒填就使用格子上的字"></label>
+      </div>`;
+    }).join('');
+  }
+
+  async function renderMenuPreview() {
+    if (!$('menuPreview')) return;
+    const template = menuTemplate(menuConfig.templateId);
+    const width = 600, height = Math.round(width * template.h / template.w);
+    try {
+      await drawMenuCanvas($('menuPreview'), menuConfig, width, height);
+      const errors = menuErrors();
+      setMenuStatus(errors.join('\n'), errors.length > 0);
+    } catch (error) {
+      setMenuStatus(error.message || '圖文選單預覽失敗', true);
+    }
+  }
+
+  async function drawLineMenuPreview() {
+    const canvas = $('lineMenuCanvas');
+    if (!canvas) return;
+    const template = menuTemplate(menuConfig.templateId);
+    const width = 500, height = Math.round(width * template.h / template.w);
+    try { await drawMenuCanvas(canvas, menuConfig, width, height); }
+    catch (error) { canvas.style.display = 'none'; }
+  }
+
+  function menuSettingsText() {
+    const template = menuTemplate(menuConfig.templateId);
+    const rows = [`版型：${template.name} ${template.w}×${template.h}`, `選單列的字：${menuConfig.barText || '選單'}`];
+    menuConfig.cells.forEach((cell, index) => {
+      const code = String.fromCharCode(65 + index);
+      const position = menuPositionName(template, index);
+      const icon = (cell.icon || '').trim();
+      const label = (cell.label || '').trim();
+      const effective = (cell.content || '').trim() || label;
+      const action = cell.action === 'text' ? `文字「${effective}」` : cell.action === 'url' ? `網址「${effective}」` : '不設定';
+      rows.push(`${code}（${position}）${icon ? icon + ' ' : ''}${label} → ${action}`);
+    });
+    return rows.join('\n');
   }
 
   function roundedRect(ctx, x, y, width, height, radius) {
@@ -690,12 +992,14 @@
            <div class="ig-bar">♡ 💬 ➤</div>
            <div class="p-text"><b>${acc}</b> ${text}</div>`,
       LINE: `<div class="line-bg"><div class="line-top">${name}</div>
-            <div class="line-row"><div class="avatar"></div><div class="line-stack">${picBox('LINE', 'line-pic')}<div class="bubble">${text}</div></div></div></div>`,
+            <div class="line-row"><div class="avatar"></div><div class="line-stack">${picBox('LINE', 'line-pic')}<div class="bubble">${text}</div></div></div>
+            <div class="line-rich-menu"><div class="line-menu-label">${esc(menuConfig.barText || '選單')} ▾</div><canvas id="lineMenuCanvas"></canvas></div></div>`,
       Threads: `<div class="th"><div class="avatar"></div><div><b>${acc}</b> <span class="small">剛剛</span>
             <div class="p-text">${text}</div>${picBox('Threads')}<div class="small">♡ 💬 🔁 ➤</div></div></div>`
     };
     $('phone').innerHTML = views[cur.tab] || views.FB;
     drawPreviewCanvases();
+    drawLineMenuPreview();
     const carousel = $('phone').querySelector('.ig-carousel');
     if (carousel) carousel.addEventListener('scroll', () => {
       const index = Math.round(carousel.scrollLeft / carousel.clientWidth);
@@ -707,6 +1011,7 @@
   // 把資料放回畫面
   function fill(persist = true) {
     FIELDS.forEach(f => $('f_' + f.id).value = cur.fields[f.id] || '');
+    $('publishDate').value = cur.publishDate || '';
     $('imageText').value = cur.imageText.text || '';
     $('imageTextPosition').value = cur.imageText.position || 'bottom';
     $('imageTextSize').value = cur.imageText.size || 'medium';
@@ -722,6 +1027,7 @@
 
   // 打字 → 自動暫存＋預覽
   FIELDS.forEach(f => $('f_' + f.id).addEventListener('input', e => { cur.fields[f.id] = e.target.value; preview(); storeDraft(); }));
+  $('publishDate').addEventListener('input', e => { cur.publishDate = e.target.value; storeDraft(); });
   $('post').addEventListener('input', e => { cur.posts[cur.tab] = e.target.value; preview(); storeDraft(); });
   $('imageText').addEventListener('input', e => { cur.imageText.text = e.target.value; preview(); storeDraft(); });
   ['imageTextPosition', 'imageTextSize', 'imageTextStyle'].forEach(id => $(id).addEventListener('change', e => {
@@ -916,7 +1222,7 @@ ${aspectRatioFor(cur.tab)}`;
   };
 
   function savedPostUsesImage(id) {
-    return load(K_POSTS, []).some(post => imageIdsFrom(post).includes(String(id)));
+    return load(K_POSTS, []).some(post => imageIdsFrom(post).includes(String(id))) || String(menuConfig.backgroundImageId || '') === String(id);
   }
 
   $('picList').onclick = async e => {
@@ -945,6 +1251,159 @@ ${aspectRatioFor(cur.tab)}`;
   const open = id => $(id).classList.add('show');
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('.modal').classList.remove('show'));
   document.querySelectorAll('.modal').forEach(m => m.onclick = e => { if (e.target === m) m.classList.remove('show'); });
+
+  $('btnAuth').onclick = () => {
+    if (!sb) setAuthStatus(`還沒接雲端：${sbUnavailableReason || '未知原因'}`);
+    else if (me?.email) setAuthStatus(`已登入：${me.email}`);
+    else setAuthStatus('請輸入 Email 和密碼。');
+    open('mAuth');
+  };
+
+  $('btnSignIn').onclick = async () => {
+    if (!authReady()) return;
+    const { email, password } = authInputs();
+    if (password.length < 6) { setAuthStatus('密碼至少 6 個字'); return; }
+    setAuthStatus('登入中…');
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      me = data.user || data.session?.user || null;
+      refreshAuthUI();
+      setAuthStatus(me?.email ? `已登入：${me.email}` : '登入完成');
+    } catch (error) {
+      setAuthStatus(authErrorZh(error));
+    }
+  };
+
+  $('btnSignUp').onclick = async () => {
+    if (!authReady()) return;
+    const { email, password } = authInputs();
+    if (password.length < 6) { setAuthStatus('密碼至少 6 個字'); return; }
+    setAuthStatus('註冊中…');
+    try {
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) throw error;
+      if (!data.session) {
+        setAuthStatus('Supabase 的 Confirm email 還開著，關掉再按登入');
+        return;
+      }
+      me = data.user || data.session.user || null;
+      refreshAuthUI();
+      setAuthStatus(me?.email ? `註冊並登入成功：${me.email}` : '註冊成功');
+    } catch (error) {
+      setAuthStatus(authErrorZh(error));
+    }
+  };
+
+  $('btnSignOut').onclick = async () => {
+    if (!authReady()) return;
+    const clearThisDevice = confirm('要把這台電腦上的貼文也清掉嗎？借別人的電腦用，請按確定；自己的電腦按取消。');
+    setAuthStatus('登出中…');
+    try {
+      const { error } = await sb.auth.signOut();
+      if (error) throw error;
+      me = null;
+      cloudPostIds.clear();
+      if (clearThisDevice) {
+        localStorage.removeItem(K_POSTS);
+        localStorage.removeItem(K_DRAFT);
+        try {
+          await clearStoredImages();
+          imageCache.clear();
+          warehouseError = '';
+        } catch (error) {
+          warehouseError = '圖片倉庫清除失敗';
+        }
+        cur = blank();
+        fill(false);
+        renderStorageUsage();
+      }
+      refreshAuthUI();
+      setAuthStatus(clearThisDevice ? '已登出，這台電腦的貼文、草稿和圖片已清掉' : '已登出');
+    } catch (error) {
+      setAuthStatus(authErrorZh(error));
+    }
+  };
+
+  $('menuTemplate').innerHTML = MENUS.map(menu => `<option value="${menu.id}">${esc(menu.name)} ${menu.w}×${menu.h}</option>`).join('');
+  function syncMenuControls() {
+    $('menuTemplate').value = menuConfig.templateId;
+    $('menuBackground').value = menuConfig.background;
+    $('menuBarText').value = menuConfig.barText || '選單';
+    renderMenuCells();
+    renderMenuPreview();
+  }
+
+  $('btnMenu').onclick = () => { syncMenuControls(); open('mMenu'); };
+  $('menuTemplate').onchange = e => {
+    const oldCells = menuConfig.cells;
+    const template = menuTemplate(e.target.value);
+    menuConfig.templateId = template.id;
+    menuConfig.cells = Array.from({ length: template.cols * template.rows }, (_, index) => ({ ...blankMenuCell(), ...(oldCells[index] || {}) }));
+    renderMenuCells(); saveMenu();
+  };
+  $('menuBackground').onchange = e => {
+    menuConfig.background = e.target.value;
+    if (menuConfig.background === 'image') menuConfig.backgroundImageId = primaryImage()?.id || null;
+    saveMenu();
+  };
+  $('menuBarText').oninput = e => {
+    menuConfig.barText = e.target.value.slice(0, 14) || '選單';
+    saveMenu();
+  };
+  const updateMenuCell = e => {
+    const row = e.target.closest('[data-menu-index]');
+    if (!row) return;
+    const index = Number(row.dataset.menuIndex);
+    const cell = menuConfig.cells[index];
+    const iconInput = row.querySelector('.menu-icon');
+    const icon = firstGrapheme(iconInput.value);
+    if (iconInput.value !== icon) iconInput.value = icon;
+    cell.icon = icon;
+    cell.label = row.querySelector('.menu-label').value.slice(0, 12);
+    cell.action = row.querySelector('.menu-action select').value;
+    cell.content = row.querySelector('.menu-content input').value;
+    saveMenu();
+  };
+  $('menuCells').addEventListener('input', updateMenuCell);
+  $('menuCells').addEventListener('change', updateMenuCell);
+
+  const menuBlob = (canvas, quality) => new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+  $('btnDownloadMenu').onclick = async () => {
+    const errors = menuErrors();
+    if (errors.length) { setMenuStatus(errors.join('\n'), true); return; }
+    const button = $('btnDownloadMenu');
+    const template = menuTemplate(menuConfig.templateId);
+    button.disabled = true; button.textContent = '⬇ 製作中…';
+    try {
+      const canvas = document.createElement('canvas');
+      await drawMenuCanvas(canvas, menuConfig, template.w, template.h);
+      let blob = null;
+      for (const quality of MENU_JPEG_QUALITIES) {
+        const candidate = await menuBlob(canvas, quality);
+        if (candidate && candidate.size <= 1000000) { blob = candidate; break; }
+      }
+      if (!blob) { setMenuStatus('壓縮後仍超過 1 MB，請改用品牌主色或白色底', true); return; }
+      const link = document.createElement('a');
+      const safeBrand = BRAND.name.replace(/[\\/:*?"<>|]/g, '_');
+      link.download = `${safeBrand}_圖文選單_${template.w}x${template.h}.jpg`;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      setMenuStatus(`下載好了：${template.w}×${template.h}，${(blob.size / 1000000).toFixed(2)} MB`);
+    } catch (error) {
+      setMenuStatus(error.message || '圖文選單下載失敗', true);
+    } finally {
+      button.disabled = false; button.textContent = '⬇ 下載選單圖';
+    }
+  };
+
+  $('btnCopyMenu').onclick = () => {
+    const errors = menuErrors();
+    if (errors.length) { setMenuStatus(errors.join('\n'), true); return; }
+    copy(menuSettingsText(), '圖文選單設定表已複製');
+    setMenuStatus('設定表已複製，可以貼到 LINE 後台逐格設定。');
+  };
 
   function copy(text, msg) {
     const fallback = () => prompt('請手動複製：', text);
@@ -1452,26 +1911,162 @@ ${posts}`;
   // 一鍵複製
   $('btnCopy').onclick = () => copy(cur.posts[cur.tab] || '', `${cur.tab} 已複製`);
 
+  function setCloudSaveStatus(message, isError = false) {
+    const status = $('cloudSaveStatus');
+    status.textContent = message;
+    status.style.color = isError ? '#b42318' : '';
+  }
+
+  function cloudSaveErrorZh(error) {
+    const code = String(error?.code || '').toUpperCase();
+    const message = String(error?.message || error || '未知錯誤');
+    if (code === '42P01' || code === 'PGRST205') {
+      return '雲端還沒有 posts 表，到 SQL Editor 貼建表那段按 Run';
+    }
+    if (code === '42501' || message.toLowerCase().includes('row-level security')) {
+      return '雲端不讓你存，SQL 的權限那段沒跑到';
+    }
+    return message;
+  }
+
+  function setCloudSyncStatus(message, isError = false) {
+    const status = $('cloudSyncStatus');
+    status.textContent = message;
+    status.style.color = isError ? '#b42318' : '';
+  }
+
+  function savedAtValue(post) {
+    const savedAt = Number(post?.savedAt);
+    return Number.isFinite(savedAt) ? savedAt : 0;
+  }
+
+  function idValue(post) {
+    const numeric = Number(post?.id);
+    return Number.isFinite(numeric) ? numeric : String(post?.id || '');
+  }
+
+  function sortSavedPosts(posts) {
+    return [...posts].sort((a, b) => {
+      const savedDiff = savedAtValue(b) - savedAtValue(a);
+      if (savedDiff) return savedDiff;
+      const aId = idValue(a), bId = idValue(b);
+      if (typeof aId === 'number' && typeof bId === 'number') return bId - aId;
+      return String(bId).localeCompare(String(aId));
+    });
+  }
+
+  async function uploadAllPosts() {
+    if (!sb || !me) { setCloudSyncStatus('先 🔐 登入', true); return; }
+    const posts = load(K_POSTS, []);
+    setCloudSyncStatus('正在上傳…');
+    for (let index = 0; index < posts.length; index++) {
+      const post = posts[index];
+      try {
+        const { error } = await sb.from('posts').upsert({
+          id: String(post.id),
+          user_id: me.id,
+          data: post,
+          publish_date: post.publishDate || null,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id,id' });
+        if (error) throw error;
+        cloudPostIds.add(String(post.id));
+      } catch (error) {
+        setCloudSyncStatus(`第 ${index + 1} 篇上傳失敗：${cloudSaveErrorZh(error)}`, true);
+        showList();
+        return;
+      }
+    }
+    setCloudSyncStatus(`上傳好了：${posts.length} 篇`);
+    showList();
+  }
+
+  async function downloadAllPosts({ automatic = false } = {}) {
+    if (!sb || !me) {
+      if (!automatic) setCloudSyncStatus('先 🔐 登入', true);
+      return;
+    }
+    if (!automatic) setCloudSyncStatus('正在從雲端拿回來…');
+    try {
+      const { data, error } = await sb.from('posts').select('data, updated_at');
+      if (error) throw error;
+      const localPosts = load(K_POSTS, []);
+      const byId = new Map(localPosts.map(post => [String(post.id), post]));
+      let added = 0, updated = 0;
+      cloudPostIds.clear();
+      for (const row of data || []) {
+        if (!row?.data || row.data.id === undefined || row.data.id === null) continue;
+        const remote = { ...row.data };
+        const key = String(remote.id);
+        cloudPostIds.add(key);
+        const local = byId.get(key);
+        if (!local) {
+          byId.set(key, remote);
+          added++;
+        } else if (savedAtValue(remote) > savedAtValue(local)) {
+          byId.set(key, remote);
+          updated++;
+        }
+      }
+      if (!store(K_POSTS, sortSavedPosts([...byId.values()]))) throw new Error('這台電腦的儲存空間不足');
+      setCloudSyncStatus(`拿回來了：新增 ${added} 篇、更新 ${updated} 篇`);
+      showList();
+    } catch (error) {
+      setCloudSyncStatus(`從雲端拿回來失敗：${cloudSaveErrorZh(error)}`, true);
+    }
+  }
+
+  function maybeAutoDownload() {
+    if (!localReady || !sb || !me?.id || autoSyncedUserIds.has(me.id)) return;
+    autoSyncedUserIds.add(me.id);
+    downloadAllPosts({ automatic: true });
+  }
+
   // 存檔
-  $('btnSave').onclick = () => {
+  $('btnSave').onclick = async () => {
     const posts = load(K_POSTS, []);
     const name = [cur.fields.date || '', topic() || '未命名'].join(' ').trim();
-    const rec = { id: cur.id || Date.now(), name, time: new Date().toLocaleString('zh-TW'), fields: { ...cur.fields }, posts: { ...cur.posts }, chats: { ...cur.chats }, previousPosts: cur.previousPosts ? { ...cur.previousPosts } : null, ...(imageWarehouseReady ? { imageIds: cur.images.map(pic => String(pic.id)) } : { images: cur.images.map(pic => ({ ...pic })) }), primaryImageId: cur.primaryImageId, imageText: { ...cur.imageText }, downloadSize: cur.downloadSize };
+    const rec = { id: cur.id || Date.now(), name, time: new Date().toLocaleString('zh-TW'), savedAt: Date.now(), publishDate: cur.publishDate || '', fields: { ...cur.fields }, posts: { ...cur.posts }, chats: { ...cur.chats }, previousPosts: cur.previousPosts ? { ...cur.previousPosts } : null, ...(imageWarehouseReady ? { imageIds: cur.images.map(pic => String(pic.id)) } : { images: cur.images.map(pic => ({ ...pic })) }), primaryImageId: cur.primaryImageId, imageText: { ...cur.imageText }, downloadSize: cur.downloadSize };
     cur.id = rec.id;
     const i = posts.findIndex(p => p.id === rec.id);
     if (i >= 0) posts[i] = rec; else posts.unshift(rec);
-    if (store(K_POSTS, posts) && storeDraft()) toast('存好了：' + name);
+    if (!(store(K_POSTS, posts) && storeDraft())) return;
+    toast('存好了：' + name);
+
+    if (!sb || !me) {
+      setCloudSaveStatus('只存在這台電腦。🔐 登入以後，會同時存到雲端');
+      return;
+    }
+
+    setCloudSaveStatus('☁ 正在存到雲端…');
+    try {
+      const { error } = await sb.from('posts').upsert({
+        id: String(rec.id),
+        user_id: me.id,
+        data: rec,
+        publish_date: rec.publishDate || null,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id,id' });
+      if (error) throw error;
+      cloudPostIds.add(String(rec.id));
+      setCloudSaveStatus(`☁ 雲端也存了：${name}`);
+      if ($('mList').classList.contains('show')) showList();
+    } catch (error) {
+      setCloudSaveStatus(`${cloudSaveErrorZh(error)}\n這台電腦有存到，不會不見`, true);
+    }
   };
 
   // 我的貼文
   function showList() {
-    const posts = load(K_POSTS, []);
+    const posts = sortSavedPosts(load(K_POSTS, []));
     $('list').innerHTML = posts.length ? posts.map(p =>
-      `<div class="item"><div><b>${esc(p.name)}</b><div class="small">${esc(p.time)}</div></div>
-       <button data-open="${p.id}">打開</button><button class="light" data-del="${p.id}">刪除</button></div>`).join('')
+      `<div class="item"><div><b>${esc(String(p.name || '未命名'))}</b>${me ? ` <span class="small">${cloudPostIds.has(String(p.id)) ? '☁ 雲端有' : '只在這台'}</span>` : ''}<div class="small">${esc(String(p.time || ''))}${p.publishDate ? `｜📅 ${esc(String(p.publishDate))}` : ''}</div></div>
+       <button data-open="${esc(String(p.id))}">打開</button><button class="light" data-del="${esc(String(p.id))}">刪除</button></div>`).join('')
       : '<p class="small">還沒有存過的貼文。</p>';
   }
   $('btnList').onclick = () => { showList(); open('mList'); };
+  $('btnUploadAll').onclick = uploadAllPosts;
+  $('btnDownloadAll').onclick = () => downloadAllPosts();
   $('list').onclick = async e => {
     const posts = load(K_POSTS, []);
     const o = e.target.dataset.open, d = e.target.dataset.del;
@@ -1486,7 +2081,22 @@ ${posts}`;
         warehouseError = '圖片倉庫暫時無法讀取'; renderStorageUsage(); toast('這篇的圖片打不開');
       }
     }
-    if (d && confirm('確定要刪除這一篇嗎？')) { store(K_POSTS, posts.filter(p => String(p.id) !== d)); showList(); }
+    if (d) {
+      const message = me ? '確定要刪除這一篇嗎？雲端的也會一起刪' : '確定要刪除這一篇嗎？';
+      if (!confirm(message)) return;
+      if (me) {
+        try {
+          const { error } = await sb.from('posts').delete().eq('id', d);
+          if (error) throw error;
+          cloudPostIds.delete(d);
+        } catch (error) {
+          setCloudSyncStatus(`刪除失敗：${cloudSaveErrorZh(error)}\n這台電腦的貼文還留著`, true);
+          return;
+        }
+      }
+      store(K_POSTS, posts.filter(p => String(p.id) !== d));
+      showList();
+    }
   };
 
   // 新的一篇
@@ -1509,7 +2119,10 @@ ${posts}`;
       fill(false);
       renderStorageUsage();
     }
+    localReady = true;
+    maybeAutoDownload();
   }
+  initializeAuth();
   initialize();
 </script>
 
